@@ -1,159 +1,68 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import WebViewer from '@pdftron/webviewer';
-import { Upload, Download, FileText, Loader2 } from 'lucide-react';
+
+async function resolveViewerPath(): Promise<string> {
+  const candidates = [
+    new URL('webviewer/', window.location.href).pathname,
+    new URL('./webviewer/', window.location.href).pathname,
+    '/webviewer/'
+  ];
+  for (const p of candidates) {
+    try {
+      const base = p.endsWith('/') ? p : p + '/';
+      const res = await fetch(base + 'webviewer.min.js', { method: 'HEAD' });
+      if (res.ok) {
+        console.info('[Apryse] Using viewer path:', base);
+        return base.replace(/\/$/, '');
+      }
+    } catch {}
+  }
+  console.warn('[Apryse] Falling back to /webviewer');
+  return '/webviewer';
+}
 
 export default function ApryseEditor() {
-  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const initializingRef = useRef(false);
 
   useEffect(() => {
-    if (!viewerRef.current) return;
-    
-    // Prevent double initialization
-    if (instanceRef.current) return;
-    
+    if (!containerRef.current) return;
+    if (initializingRef.current || instanceRef.current) return;
+    initializingRef.current = true;
+    containerRef.current.innerHTML = '';
+
     let cancelled = false;
 
     (async () => {
-      try {
-        const instance = await WebViewer(
-          {
-            path: '/webviewer',   // must match public/webviewer
-            fullAPI: true,        // enables Core.PDFNet when available
-            // licenseKey: process.env.NEXT_PUBLIC_APRYSE_KEY ?? undefined,
-          },
-          viewerRef.current
-        );
+      const path = await resolveViewerPath();
+      const instance = await WebViewer({ path, fullAPI: true }, containerRef.current!);
+      if (cancelled) return;
+      instanceRef.current = instance;
 
-        if (cancelled) return;
+      const { UI, Core } = instance;
+      UI.setTheme('dark');
+      UI.enableFeatures([UI.Feature.ContentEdit]);
+      UI.setToolbarGroup(UI.ToolbarGroup.EDIT_TEXT);
 
-        instanceRef.current = instance;
-        const { UI, Core } = instance;
-        
-        UI.setTheme('dark');
-        UI.enableFeatures([UI.Feature.ContentEdit]);
-        UI.setToolbarGroup(UI.ToolbarGroup.EDIT_TEXT);
-
-        // Initialize PDFNet once if present, and await it. DO NOT call enableJavaScript.
-        if (Core?.PDFNet && typeof Core.PDFNet.initialize === 'function') {
-          await Core.PDFNet.initialize();
-        }
-
-        if (cancelled) return;
-        setIsLoading(false);
-        (window as any).apryse = instance; // optional for debugging
-      } catch (err) {
-        console.error('WebViewer initialization error:', err);
-        setIsLoading(false);
+      if (Core?.PDFNet?.initialize) {
+        await Core.PDFNet.initialize();
       }
-    })().catch((err) => {
-      console.error('WebViewer initialization error:', err);
-      setIsLoading(false);
-    });
+    })().catch(err => console.error('WebViewer init error:', err))
+      .finally(() => { initializingRef.current = false; });
 
     return () => {
       cancelled = true;
-      if (instanceRef.current) {
-        try {
-          instanceRef.current.UI.dispose();
-        } catch (e) {
-          console.warn('Error disposing WebViewer:', e);
-        }
-        instanceRef.current = null;
-      }
+      try { instanceRef.current?.UI?.dispose?.(); } catch {}
+      instanceRef.current = null;
+      if (containerRef.current) containerRef.current.innerHTML = '';
     };
   }, []);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && instanceRef.current) {
-      const fileURL = URL.createObjectURL(file);
-      instanceRef.current.UI.loadDocument(fileURL, { filename: file.name });
-    }
-  };
-
-  const handleDownload = () => {
-    if (instanceRef.current) {
-      const { documentViewer } = instanceRef.current.Core;
-      const doc = documentViewer.getDocument();
-      
-      if (doc) {
-        doc.getFileData().then((data: ArrayBuffer) => {
-          const blob = new Blob([data], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'edited-document.pdf';
-          a.click();
-          URL.revokeObjectURL(url);
-        });
-      }
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
-      {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white flex items-center space-x-2">
-            <FileText className="w-6 h-6" />
-            <span>PDF Editor</span>
-          </h1>
-          
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Upload PDF</span>
-            </button>
-            
-            <button
-              onClick={handleDownload}
-              disabled={!instanceRef.current}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                instanceRef.current
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <Download className="w-4 h-4" />
-              <span>Download</span>
-            </button>
-            
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-          </div>
-        </div>
-      </header>
-
-      {/* WebViewer Container */}
-      <div className="flex-1 relative">
-        {isLoading && (
-          <div className="absolute inset-0 bg-gray-900 flex items-center justify-center z-10">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 text-purple-500 animate-spin mx-auto mb-4" />
-              <p className="text-white">Loading PDF Editor...</p>
-            </div>
-          </div>
-        )}
-        
-        <div 
-          ref={viewerRef} 
-          className="w-full h-full"
-          style={{ minHeight: '600px' }}
-        />
-      </div>
+    <div id="apryse-shell" className="fixed inset-0 w-full h-full">
+      <div ref={containerRef} className="w-full h-full" />
     </div>
   );
 }

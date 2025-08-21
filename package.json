@@ -6,10 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "postinstall": "node scripts/copy-webviewer-assets.cjs"
-    "postinstall": "node scripts/copy-webviewer-assets.cjs && node scripts/copy-pdfjs-worker.cjs"
+    "preview": "vite preview --strictPort",
+    "postinstall": "node -e \"console.log('postinstall: noop')\""
   },
   "dependencies": {
     "@pdftron/webviewer": "^11.6.1",
@@ -42,6 +40,7 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
+    "vite-plugin-static-copy": "^1.0.0",
     "vite": "^5.4.2"
   },
   "overrides": {
