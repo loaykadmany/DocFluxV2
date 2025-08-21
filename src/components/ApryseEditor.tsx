@@ -1,108 +1,83 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Upload, Download, FileText, Loader2 } from 'lucide-react';
+'use client';
+import { useEffect, useRef, useState } from 'react';
 import WebViewer from '@pdftron/webviewer';
+import { Upload, Download, FileText, Loader2 } from 'lucide-react';
 
-const ApryseEditor: React.FC = () => {
-  const viewer = useRef<HTMLDivElement>(null);
+export default function ApryseEditor() {
+  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const instanceRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [webViewerInstance, setWebViewerInstance] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (viewer.current) {
-      WebViewer({
-        licenseKey: 'demo:1755695988890:606a98c9030000000063a735a5785fba86cd7b75421c115737d7a48291',
-        path: '/webviewer/lib',
-        initialDoc: '',
-        fullAPI: true,
-        disableWebsockets: true,
-        enableOfficeEditing: true,
-        css: `
-          .HeaderItems .Button[data-element="downloadButton"] { display: none !important; }
-          .HeaderItems .Button[data-element="saveAsButton"] { display: none !important; }
-        `
-      }, viewer.current)
-        .then((instance) => {
-          setWebViewerInstance(instance);
-          setIsLoading(false);
+    if (!viewerRef.current) return;
+    
+    // Prevent double initialization
+    if (instanceRef.current) return;
+    
+    let cancelled = false;
 
-          const { documentViewer, annotationManager } = instance.Core;
+    (async () => {
+      try {
+        const instance = await WebViewer(
+          {
+            path: '/webviewer',   // must match public/webviewer
+            fullAPI: true,        // enables Core.PDFNet when available
+            // licenseKey: process.env.NEXT_PUBLIC_APRYSE_KEY ?? undefined,
+          },
+          viewerRef.current
+        );
 
-          // Configure the viewer
-          instance.UI.setTheme('dark');
-          
-          // Enable all editing features
-          instance.UI.enableFeatures([
-            instance.UI.Feature.TextSelection,
-            instance.UI.Feature.Annotations,
-            instance.UI.Feature.Forms,
-            instance.UI.Feature.Redaction,
-            instance.UI.Feature.ContentEdit,
-            instance.UI.Feature.Download,
-            instance.UI.Feature.Print,
-            instance.UI.Feature.Copy,
-            instance.UI.Feature.Measurement,
-            instance.UI.Feature.NotesPanel,
-            instance.UI.Feature.Search,
-            instance.UI.Feature.PageNavigation,
-            instance.UI.Feature.Ribbons,
-            instance.UI.Feature.ThumbnailPanel,
-            instance.UI.Feature.OutlinePanel,
-            instance.UI.Feature.BookmarkPanel,
-            instance.UI.Feature.LayersPanel,
-            instance.UI.Feature.SignaturePanel,
-            instance.UI.Feature.RubberStampPanel,
-            instance.UI.Feature.RedactionPanel,
-            instance.UI.Feature.TextEditingPanel,
-            instance.UI.Feature.WatermarkPanel,
-            instance.UI.Feature.PageManipulationOverlay,
-            instance.UI.Feature.MouseWheelZoom,
-            instance.UI.Feature.TouchScrollLock
-          ]);
+        if (cancelled) return;
 
-          // Disable service worker for development
-          // Service worker is disabled via disableWebsockets: true
+        instanceRef.current = instance;
+        const { UI, Core } = instance;
+        
+        UI.setTheme('dark');
+        UI.enableFeatures([UI.Feature.ContentEdit]);
+        UI.setToolbarGroup(UI.ToolbarGroup.EDIT_TEXT);
 
-          // Document loaded event
-          documentViewer.addEventListener('documentLoaded', () => {
-            console.log('Document loaded successfully');
-            
-            // Enable content editing mode by default
-            instance.UI.setToolMode(instance.Core.Tools.ToolNames.CONTENT_EDIT);
-          });
+        // Initialize PDFNet once if present, and await it. DO NOT call enableJavaScript.
+        if (Core?.PDFNet && typeof Core.PDFNet.initialize === 'function') {
+          await Core.PDFNet.initialize();
+        }
 
-          // Error handling
-          documentViewer.addEventListener('documentLoadError', (error: any) => {
-            console.error('Document load error:', error);
-          });
+        if (cancelled) return;
+        setIsLoading(false);
+        (window as any).apryse = instance; // optional for debugging
+      } catch (err) {
+        console.error('WebViewer initialization error:', err);
+        setIsLoading(false);
+      }
+    })().catch((err) => {
+      console.error('WebViewer initialization error:', err);
+      setIsLoading(false);
+    });
 
-          // Disable service worker warnings
-          if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-              for(let registration of registrations) {
-                registration.unregister();
-              }
-            });
-          }
-        })
-        .catch((error) => {
-          console.error('WebViewer initialization error:', error);
-          setIsLoading(false);
-        });
-    }
+    return () => {
+      cancelled = true;
+      if (instanceRef.current) {
+        try {
+          instanceRef.current.UI.dispose();
+        } catch (e) {
+          console.warn('Error disposing WebViewer:', e);
+        }
+        instanceRef.current = null;
+      }
+    };
   }, []);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && webViewerInstance) {
+    if (file && instanceRef.current) {
       const fileURL = URL.createObjectURL(file);
-      webViewerInstance.UI.loadDocument(fileURL, { filename: file.name });
+      instanceRef.current.UI.loadDocument(fileURL, { filename: file.name });
     }
   };
 
   const handleDownload = () => {
-    if (webViewerInstance) {
-      const { documentViewer } = webViewerInstance.Core;
+    if (instanceRef.current) {
+      const { documentViewer } = instanceRef.current.Core;
       const doc = documentViewer.getDocument();
       
       if (doc) {
@@ -140,9 +115,9 @@ const ApryseEditor: React.FC = () => {
             
             <button
               onClick={handleDownload}
-              disabled={!webViewerInstance}
+              disabled={!instanceRef.current}
               className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                webViewerInstance
+                instanceRef.current
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'bg-gray-600 text-gray-400 cursor-not-allowed'
               }`}
@@ -174,33 +149,11 @@ const ApryseEditor: React.FC = () => {
         )}
         
         <div 
-          ref={viewer} 
+          ref={viewerRef} 
           className="w-full h-full"
           style={{ minHeight: '600px' }}
         />
       </div>
-
-      {/* Instructions */}
-      {!isLoading && !webViewerInstance && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/90">
-          <div className="text-center max-w-md">
-            <FileText className="w-16 h-16 text-purple-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-white mb-2">Professional PDF Editor</h2>
-            <p className="text-gray-400 mb-6">
-              Upload a PDF to start editing with advanced tools including text editing, 
-              annotations, forms, and more.
-            </p>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200"
-            >
-              Upload Your First PDF
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
-};
-
-export default ApryseEditor;
+}
