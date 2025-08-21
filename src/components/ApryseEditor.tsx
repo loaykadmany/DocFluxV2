@@ -2,7 +2,6 @@
 import { useEffect, useRef } from 'react';
 import WebViewer from '@pdftron/webviewer';
 
-// Treat anything with content-type HTML as invalid (it will cause "<" errors)
 async function okNonHtml(url: string) {
   try {
     const r = await fetch(url, { method: 'HEAD' });
@@ -13,14 +12,19 @@ async function okNonHtml(url: string) {
   }
 }
 
+function abs(href: string, rel: string) {
+  // Always build URLs using an ABSOLUTE base to avoid "Invalid base URL"
+  return new URL(rel, href).pathname.replace(/\/+$/, ''); // normalize, drop trailing slash
+}
+
 async function resolveViewerPath(): Promise<string> {
-  // Start from Vite's base (relative), then fall back to relative-from-page, finally root
-  const basePrefix = new URL(import.meta.env.BASE_URL || './', window.location.href).pathname;
+  const href = window.location.href; // absolute base (required by URL())
+  // Build prefix-aware candidates using ABSOLUTE base
   const candidates = [
-    new URL('webviewer/', basePrefix).pathname,                    // <base>/webviewer/
-    new URL('./webviewer/', window.location.href).pathname,         // ./webviewer/
-    '/webviewer/'                                                   // root fallback
-  ].map(p => (p.endsWith('/') ? p.slice(0, -1) : p));
+    abs(href, './webviewer/'),
+    abs(href, 'webviewer/'),
+    '/webviewer' // root fallback
+  ];
 
   const top = ['webviewer.min.js', 'core/webviewer-core.min.js'];
   const deep = [
@@ -32,7 +36,6 @@ async function resolveViewerPath(): Promise<string> {
     const topOk = await okNonHtml(`${base}/${top[0]}`) && await okNonHtml(`${base}/${top[1]}`);
     if (!topOk) continue;
 
-    // Accept if at least one deep core file is non-HTML (varies by build)
     let deepOk = false;
     for (const d of deep) {
       if (await okNonHtml(`${base}/${d}`)) { deepOk = true; break; }
@@ -80,11 +83,10 @@ export default function ApryseEditor() {
         await Core.PDFNet.initialize();
       }
 
-      // Sanity: log content-type to confirm no HTML
+      // Sanity: confirm not HTML
       for (const p of [`${path}/webviewer.min.js`, `${path}/core/webviewer-core.min.js`]) {
-        fetch(p, { method: 'HEAD' }).then(r =>
-          console.info('[Apryse asset]', p, r.status, r.headers.get('content-type'))
-        );
+        fetch(p, { method: 'HEAD' })
+          .then(r => console.info('[Apryse asset]', p, r.status, r.headers.get('content-type')));
       }
     })()
       .catch(err => console.error('WebViewer initialization error:', err))
@@ -92,7 +94,7 @@ export default function ApryseEditor() {
 
     return () => {
       cancelled = true;
-      try { instanceRef.current?.UI?.dispose?.(); } catch {}
+      try { instanceRef.instance?.UI?.dispose?.(); } catch {}
       instanceRef.current = null;
       if (containerRef.current) containerRef.current.innerHTML = '';
     };
