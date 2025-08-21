@@ -12,18 +12,10 @@ export default defineConfig({
     headers: {
       'Cross-Origin-Embedder-Policy': 'credentialless',
       'Cross-Origin-Opener-Policy': 'same-origin'
-    },
-    fs: {
-      allow: ['..']
-    },
-    headers: {
-      'Cross-Origin-Embedder-Policy': 'credentialless',
-      'Cross-Origin-Opener-Policy': 'same-origin'
-    },
+    }
   },
   optimizeDeps: {
-    include: ['react-pdf', 'pdfjs-dist'],
-    exclude: ['lucide-react']
+    include: ['react-pdf', 'pdfjs-dist']
   },
   build: {
     rollupOptions: {
