@@ -51,12 +51,6 @@ async function resolveViewerPath(): Promise<string> {
     }
   }
 
-  // DEV-only CDN fallback if all local candidates fail
-  if (import.meta.env.DEV) {
-    console.warn('[Apryse] Using CDN fallback for development');
-    return 'https://cdn.jsdelivr.net/npm/@pdftron/webviewer@10.10.0/public';
-  }
-
   console.warn('[Apryse] Falling back to /webviewer (root)');
   return '/webviewer';
 }
