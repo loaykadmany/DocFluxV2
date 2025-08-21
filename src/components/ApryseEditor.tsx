@@ -1,7 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import WebViewer from '@pdftron/webviewer';
-import { Upload } from 'lucide-react';
 
 async function resolveViewerPath(): Promise<string> {
   const candidates = [
@@ -27,8 +26,6 @@ export default function ApryseEditor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<any>(null);
   const initializingRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -40,13 +37,20 @@ export default function ApryseEditor() {
 
     (async () => {
       const path = await resolveViewerPath();
-      const instance = await WebViewer({ path, fullAPI: true }, containerRef.current!);
+      const instance = await WebViewer({
+        path,
+        fullAPI: true,
+        enableFilePicker: true,
+        enableRedaction: true,
+        enableMeasurement: true,
+      }, containerRef.current!);
       if (cancelled) return;
       instanceRef.current = instance;
 
       const { UI, Core } = instance;
       UI.setTheme('dark');
       UI.enableFeatures([UI.Feature.ContentEdit]);
+      UI.enableFeatures([UI.Feature.FilePicker]);
       UI.setToolbarGroup(UI.ToolbarGroup.EDIT_TEXT);
 
       if (Core?.PDFNet?.initialize) {
@@ -64,52 +68,8 @@ export default function ApryseEditor() {
     };
   }, []);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !instanceRef.current) return;
-
-    if (file.type !== 'application/pdf') {
-      alert('Please select a PDF file');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const { documentViewer } = instanceRef.current.Core;
-      await documentViewer.loadDocument(file);
-    } catch (error) {
-      console.error('Error loading PDF:', error);
-      alert('Failed to load PDF file');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
     <div id="apryse-shell" className="fixed inset-0 w-full h-full">
-      {/* Upload Button - Bottom Right */}
-      <div className="fixed bottom-6 right-6 z-[9999]">
-        <button
-          onClick={handleUploadClick}
-          disabled={isLoading || !instanceRef.current}
-          className="flex items-center space-x-2 px-4 py-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-xl hover:shadow-2xl transform hover:scale-105"
-        >
-          <Upload className="w-4 h-4" />
-          <span>{isLoading ? 'Loading...' : 'Upload PDF'}</span>
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf"
-          onChange={handleFileUpload}
-          className="hidden"
-        />
-      </div>
-      
       <div ref={containerRef} className="w-full h-full" />
     </div>
   );
