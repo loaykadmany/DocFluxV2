@@ -91,12 +91,12 @@ export default function ApryseEditor() {
 
   return (
     <div id="apryse-shell" className="fixed inset-0 w-full h-full">
-      {/* Upload Button */}
-      <div className="absolute top-4 left-4 z-50">
+      {/* Upload Button - Bottom Right */}
+      <div className="fixed bottom-6 right-6 z-[9999]">
         <button
           onClick={handleUploadClick}
           disabled={isLoading || !instanceRef.current}
-          className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
+          className="flex items-center space-x-2 px-4 py-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-xl hover:shadow-2xl transform hover:scale-105"
         >
           <Upload className="w-4 h-4" />
           <span>{isLoading ? 'Loading...' : 'Upload PDF'}</span>
