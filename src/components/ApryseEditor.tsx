@@ -49,7 +49,8 @@ export default function ApryseEditor() {
       if (Core?.PDFNet?.initialize) {
         await Core.PDFNet.initialize();
       }
-    })().catch(err => console.error('WebViewer init error:', err))
+    })()
+      .catch(err => console.error('WebViewer init error:', err))
       .finally(() => { initializingRef.current = false; });
 
     return () => {

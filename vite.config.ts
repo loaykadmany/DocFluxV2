@@ -5,7 +5,6 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 export default defineConfig({
   plugins: [
     react(),
-    // Copy Apryse WebViewer static assets to /webviewer (dev) and dist/webviewer (build)
     viteStaticCopy({
       targets: [
         {
