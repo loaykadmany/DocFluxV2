@@ -1,19 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
-  plugins: [
-    react(),
-    viteStaticCopy({
-      targets: [
-        {
-          src: 'node_modules/@pdftron/webviewer/public/*',
-          dest: 'webviewer'
-        }
-      ]
-    })
-  ],
+  base: './', // <— IMPORTANT: make built asset URLs relative (not rooted at "/")
+  plugins: [react()],
   assetsInclude: ['**/*.wasm'],
   server: {
     headers: {
@@ -22,8 +12,6 @@ export default defineConfig({
     }
   },
   build: {
-    rollupOptions: {
-      input: 'index.html'
-    }
+    rollupOptions: { input: 'index.html' }
   }
 });

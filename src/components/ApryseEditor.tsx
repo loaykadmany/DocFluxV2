@@ -2,10 +2,11 @@
 import { useEffect, useRef } from 'react';
 import WebViewer from '@pdftron/webviewer';
 
+// Treat anything with content-type HTML as invalid (it will cause "<" errors)
 async function okNonHtml(url: string) {
   try {
     const r = await fetch(url, { method: 'HEAD' });
-    const ct = r.headers.get('content-type') || '';
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
     return r.ok && !ct.includes('text/html');
   } catch {
     return false;
@@ -13,45 +14,39 @@ async function okNonHtml(url: string) {
 }
 
 async function resolveViewerPath(): Promise<string> {
-  // Try RELATIVE paths first so we inherit any dev prefix (/5173/...), then root
-  const bases = [
-    new URL('webviewer/', window.location.href).pathname,
-    new URL('./webviewer/', window.location.href).pathname,
-    '/webviewer/'
-  ].map(b => (b.endsWith('/') ? b.slice(0, -1) : b));
+  // Start from Vite's base (relative), then fall back to relative-from-page, finally root
+  const basePrefix = new URL(import.meta.env.BASE_URL || './', window.location.href).pathname;
+  const candidates = [
+    new URL('webviewer/', basePrefix).pathname,                    // <base>/webviewer/
+    new URL('./webviewer/', window.location.href).pathname,         // ./webviewer/
+    '/webviewer/'                                                   // root fallback
+  ].map(p => (p.endsWith('/') ? p.slice(0, -1) : p));
 
-  // Probe top-level + deep engine assets; reject anything serving HTML
-  const probes = [
-    'webviewer.min.js',
-    'core/webviewer-core.min.js',
-    // Deep engine variants (Apryse build dependent) — we only need any 1–2 to confirm
-    'core/pdf/PDFNet.js.mem',
-    'core/pdf/PDFNet.res',
-    'core/pdf/lean/PDFNetCWasm.br.js.mem',
-    'core/pdf/lean/PDFNet.res'
+  const top = ['webviewer.min.js', 'core/webviewer-core.min.js'];
+  const deep = [
+    'core/pdf/PDFNet.js.mem', 'core/pdf/PDFNet.res',
+    'core/pdf/lean/PDFNetCWasm.br.js.mem', 'core/pdf/lean/PDFNet.res'
   ];
 
-  for (const base of bases) {
-    const topOk =
-      await okNonHtml(`${base}/webviewer.min.js`) &&
-      await okNonHtml(`${base}/core/webviewer-core.min.js`);
-
+  for (const base of candidates) {
+    const topOk = await okNonHtml(`${base}/${top[0]}`) && await okNonHtml(`${base}/${top[1]}`);
     if (!topOk) continue;
 
-    let deepHits = 0;
-    for (const p of probes.slice(2)) {
-      if (await okNonHtml(`${base}/${p}`)) deepHits++;
-      if (deepHits >= 2) break;
+    // Accept if at least one deep core file is non-HTML (varies by build)
+    let deepOk = false;
+    for (const d of deep) {
+      if (await okNonHtml(`${base}/${d}`)) { deepOk = true; break; }
     }
-    if (deepHits >= 1) {
-      console.info('[Apryse] Using viewer path:', base);
-      return base;
-    } else {
+    if (!deepOk) {
       console.warn('[Apryse] Deep core not reachable under', base);
+      continue;
     }
+
+    console.info('[Apryse] Using viewer path:', base);
+    return base;
   }
 
-  console.warn('[Apryse] Falling back to /webviewer (root)');
+  console.warn('[Apryse] Falling back to /webviewer');
   return '/webviewer';
 }
 
@@ -64,8 +59,8 @@ export default function ApryseEditor() {
     if (!containerRef.current) return;
     if (initializingRef.current || instanceRef.current) return;
     initializingRef.current = true;
-    containerRef.current.innerHTML = '';
 
+    containerRef.current.innerHTML = '';
     let cancelled = false;
 
     (async () => {
@@ -85,17 +80,15 @@ export default function ApryseEditor() {
         await Core.PDFNet.initialize();
       }
 
-      // Sanity: log the two key files with content-type
+      // Sanity: log content-type to confirm no HTML
       for (const p of [`${path}/webviewer.min.js`, `${path}/core/webviewer-core.min.js`]) {
-        fetch(p, { method: 'HEAD' }).then(r => {
-          console.info('[Apryse asset]', p, r.status, r.headers.get('content-type'));
-        });
+        fetch(p, { method: 'HEAD' }).then(r =>
+          console.info('[Apryse asset]', p, r.status, r.headers.get('content-type'))
+        );
       }
-    })().catch(err => {
-      console.error('WebViewer initialization error:', err);
-    }).finally(() => {
-      initializingRef.current = false;
-    });
+    })()
+      .catch(err => console.error('WebViewer initialization error:', err))
+      .finally(() => { initializingRef.current = false; });
 
     return () => {
       cancelled = true;
