@@ -2,11 +2,11 @@ const fs = require('fs');
 const path = require('path');
 
 const src = path.resolve(__dirname, '..', 'node_modules', '@pdftron', 'webviewer', 'public');
-const dest = path.resolve(__dirname, '..', 'public', 'webviewer', 'lib');
+const dest = path.resolve(__dirname, '..', 'public', 'webviewer');
 
 function copyRecursive(srcDir, destDir) {
   if (!fs.existsSync(srcDir)) {
-    console.error('[Apryse copy] Source not found:', srcDir);
+    console.error('[WebViewer] Source not found:', srcDir);
     process.exit(1);
   }
   fs.mkdirSync(destDir, { recursive: true });
@@ -22,6 +22,6 @@ function copyRecursive(srcDir, destDir) {
   }
 }
 
-console.log('[Apryse copy] Copying WebViewer assets...');
+console.log('[WebViewer] Copying assets...');
 copyRecursive(src, dest);
-console.log('[Apryse copy] WebViewer assets copied to public/webviewer/lib');
+console.log('[WebViewer] Assets copied to public/webviewer');

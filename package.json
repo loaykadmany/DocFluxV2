@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "postinstall": "node scripts/copy-webviewer-assets.cjs"
     "postinstall": "node scripts/copy-webviewer-assets.cjs && node scripts/copy-pdfjs-worker.cjs"
   },
   "dependencies": {
