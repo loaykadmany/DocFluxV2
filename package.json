@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
-    "postinstall": "node scripts/copy-assets.cjs && node scripts/copy-pdfjs-worker.cjs"
+    "preview": "vite preview",
+    "postinstall": "node scripts/copy-webviewer-assets.cjs && node scripts/copy-pdfjs-worker.cjs"
+  },
   "dependencies": {
     "@pdftron/webviewer": "^11.6.1",
     "jszip": "^3.10.1",
