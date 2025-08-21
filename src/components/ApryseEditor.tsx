@@ -1,13 +1,22 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import WebViewer from '@pdftron/webviewer';
 
-const APRYSE_VER = '11.6.1'; // must match package.json
+const APRYSE_VER = '11.6.1'; // must match package.json @pdftron/webviewer version
+const CACHE_KEY = 'apryse_viewer_path_v1';
 
-async function initWithPath(path: string, el: HTMLElement) {
-  console.info('[Apryse] Trying path:', path);
+type Status =
+  | { phase: 'initializing'; note?: string }
+  | { phase: 'ready'; path: string }
+  | { phase: 'error'; message: string; attempts: Array<{ path: string; error: string }> };
+
+function clearCache() {
+  try { sessionStorage.removeItem(CACHE_KEY); } catch {}
+}
+
+async function tryInit(path: string, el: HTMLElement) {
+  // Try to initialize WebViewer with this path
   const instance = await WebViewer({ path, fullAPI: true }, el);
-  console.info('[Apryse] SUCCESS with path:', path);
   return instance;
 }
 
@@ -15,6 +24,7 @@ export default function ApryseEditor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<any>(null);
   const initializingRef = useRef(false);
+  const [status, setStatus] = useState<Status>({ phase: 'initializing', note: 'Booting editor…' });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -26,64 +36,135 @@ export default function ApryseEditor() {
 
     (async () => {
       const href = window.location.href;
-      // Candidate list: RELATIVE first (inherits /5173/ prefixes), then root, then BASE_URL, then DEV CDN
+      const cached = (() => {
+        try { return sessionStorage.getItem(CACHE_KEY) || undefined; } catch { return undefined; }
+      })();
+
+      // Candidate order: cached → prefix-aware relative → relative → root → DEV CDN (dev-only)
       const candidates: string[] = [
-        // strictly relative (works in most dev hosts with path prefixes)
-        new URL('./webviewer/', href).pathname, // e.g., /5173/.../webviewer/
-        './webviewer',                           // relative string fallback
-        '/webviewer',                            // root (works on plain localhost)
-        (import.meta.env.BASE_URL || './').replace(/\/+$/, '') + '/webviewer',
-        // DEV-only CDN fallback to guarantee a working editor in weird dev hosts
+        ...(cached ? [cached] : []),
+        new URL('./webviewer/', href).pathname,  // e.g. /5173/.../webviewer/
+        './webviewer',
+        '/webviewer',
         ...(import.meta.env.DEV ? [
           `https://cdn.jsdelivr.net/npm/@pdftron/webviewer@${APRYSE_VER}/public`
         ] : [])
       ];
 
+      const attempts: Array<{ path: string; error: string }> = [];
       let chosen: string | null = null;
       let instance: any = null;
 
       for (const p of candidates) {
         try {
-          // Clear any stale DOM before a new attempt
+          // Prevent stacked UIs between attempts
           containerRef.current!.innerHTML = '';
-          instance = await initWithPath(p, containerRef.current!);
+          setStatus({ phase: 'initializing', note: `Starting viewer at: ${p}` });
+          instance = await tryInit(p, containerRef.current!);
           chosen = p;
           break;
-        } catch (e) {
-          console.warn('[Apryse] Path failed:', p, e);
+        } catch (e: any) {
+          attempts.push({ path: p, error: e?.message || String(e) });
+          // If the cached path failed, drop it so future mounts don't keep failing silently
+          if (p === cached) { clearCache(); }
         }
       }
 
       if (!instance || !chosen) {
-        throw new Error('[Apryse] No viable WebViewer path candidates succeeded.');
+        setStatus({
+          phase: 'error',
+          message: 'Could not initialize the PDF editor. See attempts below.',
+          attempts,
+        });
+        throw new Error('No viable WebViewer path candidates succeeded.');
       }
       if (cancelled) return;
 
-      instanceRef.current = instance;
+      // Cache the successful path for fast future inits
+      try { sessionStorage.setItem(CACHE_KEY, chosen); } catch {}
 
+      instanceRef.current = instance;
       const { UI, Core } = instance;
+
       UI.setTheme('dark');
       UI.enableFeatures([UI.Feature.ContentEdit]);
       UI.setToolbarGroup(UI.ToolbarGroup.EDIT_TEXT);
 
+      // Initialize PDFNet when available, but do not call unsupported APIs
       if (Core?.PDFNet?.initialize) {
         await Core.PDFNet.initialize();
       }
+
+      setStatus({ phase: 'ready', path: chosen });
     })()
-      .catch(err => console.error('WebViewer initialization error:', err))
-      .finally(() => { initializingRef.current = false; });
+      .catch((err) => {
+        console.error('WebViewer initialization error:', err);
+      })
+      .finally(() => {
+        initializingRef.current = false;
+      });
 
     return () => {
       cancelled = true;
       try { instanceRef.current?.UI?.dispose?.(); } catch {}
       instanceRef.current = null;
-      if (containerRef.current) containerRef.current.innerHTML = '';
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
     };
   }, []);
 
   return (
-    <div id="apryse-shell" className="fixed inset-0 w-full h-full">
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="apryse-fullscreen">
+      {/* Viewer host */}
+      <div ref={containerRef} className="w-full h-full min-h-[100vh] bg-neutral-900" />
+
+      {/* Overlay: initializing / error */}
+      {status.phase !== 'ready' && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-auto max-w-lg w-[90%] rounded-xl bg-black/80 text-white p-4 shadow-xl border border-white/10">
+            {status.phase === 'initializing' && (
+              <>
+                <div className="text-lg font-semibold">Starting PDF Editor…</div>
+                <div className="mt-2 text-sm opacity-80">{status.note ?? 'Loading…'}</div>
+                <div className="mt-3 text-xs opacity-60">If this takes unusually long, click "Reset Path Cache".</div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    className="px-3 py-1 rounded bg-white/10 hover:bg-white/20"
+                    onClick={() => { clearCache(); location.reload(); }}
+                  >
+                    Reset Path Cache
+                  </button>
+                </div>
+              </>
+            )}
+            {status.phase === 'error' && (
+              <>
+                <div className="text-lg font-semibold text-red-300">Couldn't start the PDF Editor</div>
+                <div className="mt-2 text-sm opacity-80">{status.message}</div>
+                <div className="mt-3 text-xs opacity-70">
+                  <div className="font-semibold">Attempts:</div>
+                  <ul className="list-disc pl-5 mt-1 space-y-1">
+                    {status.attempts.map((a, i) => (
+                      <li key={i}>
+                        <span className="font-mono">{a.path}</span> — {a.error}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    className="px-3 py-1 rounded bg-white/10 hover:bg-white/20"
+                    onClick={() => { clearCache(); location.reload(); }}
+                  >
+                    Reset Path Cache
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

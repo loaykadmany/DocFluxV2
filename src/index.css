@@ -129,3 +129,19 @@ input:focus-visible {
 ::selection {
   background: rgba(139, 92, 246, 0.3);
 }
+
+/* Full height layout for Apryse viewer */
+html, body, #root {
+  height: 100%;
+}
+
+#root, body {
+  margin: 0;
+}
+
+.apryse-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
