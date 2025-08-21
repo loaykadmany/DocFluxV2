@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  base: './', // <— IMPORTANT: make built asset URLs relative (not rooted at "/")
+  base: './',
   plugins: [react()],
   assetsInclude: ['**/*.wasm'],
   server: {
@@ -12,6 +12,8 @@ export default defineConfig({
     }
   },
   build: {
-    rollupOptions: { input: 'index.html' }
+    rollupOptions: {
+      input: 'index.html'
+    }
   }
 });

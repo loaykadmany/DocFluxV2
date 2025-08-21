@@ -2,28 +2,32 @@
 import { useEffect, useRef } from 'react';
 import WebViewer from '@pdftron/webviewer';
 
-async function okNonHtml(url: string) {
+const APRYSE_VER = '11.6.1'; // must match package.json
+const DEV_CDN = `https://cdn.jsdelivr.net/npm/@pdftron/webviewer@${APRYSE_VER}/public`;
+
+async function isNonHtml(url: string) {
   try {
     const r = await fetch(url, { method: 'HEAD' });
     const ct = (r.headers.get('content-type') || '').toLowerCase();
     return r.ok && !ct.includes('text/html');
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
-function abs(href: string, rel: string) {
-  // Always build URLs using an ABSOLUTE base to avoid "Invalid base URL"
-  return new URL(rel, href).pathname.replace(/\/+$/, ''); // normalize, drop trailing slash
+function normPath(p: string) {
+  return p.replace(/\/+$/, '');
 }
 
-async function resolveViewerPath(): Promise<string> {
-  const href = window.location.href; // absolute base (required by URL())
-  // Build prefix-aware candidates using ABSOLUTE base
+function rel(baseHref: string, relPath: string) {
+  // Always build with absolute base to avoid "Invalid base URL"
+  return normPath(new URL(relPath, baseHref).pathname);
+}
+
+async function resolveLocalViewerPath(): Promise<string | null> {
+  const href = window.location.href;
   const candidates = [
-    abs(href, './webviewer/'),
-    abs(href, 'webviewer/'),
-    '/webviewer' // root fallback
+    rel(href, './webviewer/'),
+    rel(href, 'webviewer/'),
+    '/webviewer'
   ];
 
   const top = ['webviewer.min.js', 'core/webviewer-core.min.js'];
@@ -33,23 +37,40 @@ async function resolveViewerPath(): Promise<string> {
   ];
 
   for (const base of candidates) {
-    const topOk = await okNonHtml(`${base}/${top[0]}`) && await okNonHtml(`${base}/${top[1]}`);
+    const topOk = await isNonHtml(`${base}/${top[0]}`) && await isNonHtml(`${base}/${top[1]}`);
     if (!topOk) continue;
-
     let deepOk = false;
     for (const d of deep) {
-      if (await okNonHtml(`${base}/${d}`)) { deepOk = true; break; }
+      if (await isNonHtml(`${base}/${d}`)) { deepOk = true; break; }
     }
     if (!deepOk) {
-      console.warn('[Apryse] Deep core not reachable under', base);
+      console.warn('[Apryse] Local deep core not reachable under', base);
       continue;
     }
-
-    console.info('[Apryse] Using viewer path:', base);
+    console.info('[Apryse] Using LOCAL viewer path:', base);
     return base;
   }
+  return null;
+}
 
-  console.warn('[Apryse] Falling back to /webviewer');
+async function resolveViewerPath(): Promise<string> {
+  // Prefer local in all cases
+  const local = await resolveLocalViewerPath();
+  if (local) return local;
+
+  // DEV-only fallback to CDN (to guarantee a working editor during development)
+  if (import.meta.env.DEV) {
+    const topOk =
+      await isNonHtml(`${DEV_CDN}/webviewer.min.js`) &&
+      await isNonHtml(`${DEV_CDN}/core/webviewer-core.min.js`);
+    if (topOk) {
+      console.warn('[Apryse] Falling back to DEV CDN path:', DEV_CDN);
+      return DEV_CDN;
+    }
+  }
+
+  // Last resort (will likely fail, but we log it)
+  console.error('[Apryse] No valid viewer path found (local or CDN).');
   return '/webviewer';
 }
 
@@ -83,10 +104,11 @@ export default function ApryseEditor() {
         await Core.PDFNet.initialize();
       }
 
-      // Sanity: confirm not HTML
+      // Sanity: log CT for top assets
       for (const p of [`${path}/webviewer.min.js`, `${path}/core/webviewer-core.min.js`]) {
-        fetch(p, { method: 'HEAD' })
-          .then(r => console.info('[Apryse asset]', p, r.status, r.headers.get('content-type')));
+        fetch(p, { method: 'HEAD' }).then(r =>
+          console.info('[Apryse asset]', p, r.status, r.headers.get('content-type'))
+        );
       }
     })()
       .catch(err => console.error('WebViewer initialization error:', err))
@@ -94,7 +116,7 @@ export default function ApryseEditor() {
 
     return () => {
       cancelled = true;
-      try { instanceRef.instance?.UI?.dispose?.(); } catch {}
+      try { instanceRef.current?.UI?.dispose?.(); } catch {}
       instanceRef.current = null;
       if (containerRef.current) containerRef.current.innerHTML = '';
     };
