@@ -61,9 +61,7 @@ const ApryseEditor: React.FC = () => {
           ]);
 
           // Disable service worker for development
-          if (instance.Core.PDFNet) {
-            instance.Core.PDFNet.enableJavaScript(false);
-          }
+          // Service worker is disabled via disableWebsockets: true
 
           // Document loaded event
           documentViewer.addEventListener('documentLoaded', () => {

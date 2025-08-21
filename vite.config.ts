@@ -13,6 +13,13 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'credentialless',
       'Cross-Origin-Opener-Policy': 'same-origin'
     },
+    fs: {
+      allow: ['..']
+    },
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin'
+    },
   },
   optimizeDeps: {
     include: ['react-pdf', 'pdfjs-dist'],
